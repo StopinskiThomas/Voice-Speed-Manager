@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Voice Speed Manager - Documentation</title>
+<style>
+body { font-family: sans-serif; }
+h1 { color: #2c3e50; }
+h2 { color: #34495e; border-bottom: 1px solid #ddd; }
+code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Voice Speed Manager</h1>
+<p>An NVDA add-on to automatically adjust speech speed based on language and switch voice/language based on the active application.</p>
+
+<h2>Features</h2>
+<ul>
+    <li><strong>Language-Specific Speed:</strong> Set different speech rates for different languages (e.g., German at 40%, English at 20%).</li>
+    <li><strong>Application-Specific Voice:</strong> Automatically switch the synthesizer language when focusing specific applications (e.g., switch to German for Outlook).</li>
+</ul>
+
+<h2>Configuration</h2>
+<p>Go to <strong>NVDA Menu -> Preferences -> Settings -> Voice Speed Manager</strong>.</p>
+
+<h3>Application Rules</h3>
+<p>Add rules to map an application (e.g., <code>outlook.exe</code>) to a specific language code (e.g., <code>de</code> for German, <code>en</code> for English).</p>
+
+<h3>Language Rates</h3>
+<p>Set the desired speech rate (0-100) for each language code. The add-on will automatically apply this rate whenever the synthesizer switches to that language.</p>
+
+<h2>Usage</h2>
+<p>Once configured, simply use your computer as normal. When you switch to an application with a configured rule, the voice will change automatically. If the new voice's language has a specific rate set, the speech speed will also adjust.</p>
+
+<h2>Credits</h2>
+<p>Author: Gemini CLI</p>
+</body>
+</html>
