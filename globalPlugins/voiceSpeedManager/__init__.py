@@ -1,13 +1,23 @@
 import globalPluginHandler
 import synthDriverHandler
 import ui
+import gui
 from logHandler import log
 from .config import conf
+from .gui import VoiceSpeedSettingsPanel
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super(GlobalPlugin, self).__init__()
         self._last_app = None
+        gui.NVDASettingsDialog.categoryClasses.append(VoiceSpeedSettingsPanel)
+
+    def terminate(self):
+        super(GlobalPlugin, self).terminate()
+        try:
+            gui.NVDASettingsDialog.categoryClasses.remove(VoiceSpeedSettingsPanel)
+        except ValueError:
+            pass
 
     def event_gainFocus(self, obj, nextHandler):
         try:
