@@ -59,10 +59,28 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             return
 
         try:
-            # Attempt to set language directly
-            # This works if the synth supports language switching (e.g. eSpeak, OneCore)
+            # 1. Try direct assignment (most robust if synth supports it)
             synth.language = lang_code
             log.info(f"VoiceSpeedManager: Switched language to {lang_code}")
+            return
+        except Exception:
+            pass
+        
+        # 2. Fallback: Search in availableLanguages
+        try:
+            available = synth.availableLanguages
+            # normalized comparison
+            target = lang_code.lower().replace("-", "_")
+            
+            for lang in available:
+                l = lang.lower().replace("-", "_")
+                if l == target or l.startswith(target + "_"):
+                    synth.language = lang
+                    log.info(f"VoiceSpeedManager: Switched language to {lang} (matched from {lang_code})")
+                    return
+            
+            log.warning(f"VoiceSpeedManager: Could not find language match for {lang_code}")
+
         except Exception as e:
             log.error(f"VoiceSpeedManager: Failed to set language {lang_code}: {e}")
 
