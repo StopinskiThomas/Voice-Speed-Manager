@@ -18,61 +18,76 @@ class VoiceSpeedSettingsPanel(gui.SettingsPanel):
     title = _("Voice Speed Manager")
 
     def makeSettings(self, settingsSizer):
-        # Section 1: Application Rules
-        app_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Application Rules")), wx.VERTICAL)
-        
-        # List of rules
-        self.rules_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self.rules_list.InsertColumn(0, _("Application (.exe)"), width=150)
-        self.rules_list.InsertColumn(1, _("Language"), width=100)
-        
-        self.populate_rules_list()
-        
-        app_box.Add(self.rules_list, 1, wx.EXPAND | wx.ALL, 5)
-        
-        # Add/Edit buttons (simplified for now)
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.add_btn = wx.Button(self, label=_("Add Rule"))
-        self.add_btn.Bind(wx.EVT_BUTTON, self.on_add_rule)
-        self.remove_btn = wx.Button(self, label=_("Remove Rule"))
-        self.remove_btn.Bind(wx.EVT_BUTTON, self.on_remove_rule)
-        
-        btn_sizer.Add(self.add_btn, 0, wx.ALL, 5)
-        btn_sizer.Add(self.remove_btn, 0, wx.ALL, 5)
-        app_box.Add(btn_sizer, 0, wx.ALIGN_CENTER)
-        
-        settingsSizer.Add(app_box, 1, wx.EXPAND | wx.ALL, 10)
+        try:
+            # Section 1: Application Rules
+            app_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Application Rules")), wx.VERTICAL)
+            
+            # List of rules
+            self.rules_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+            self.rules_list.InsertColumn(0, _("Application (.exe)"), width=150)
+            self.rules_list.InsertColumn(1, _("Language"), width=100)
+            
+            self.populate_rules_list()
+            
+            app_box.Add(self.rules_list, 1, wx.EXPAND | wx.ALL, 5)
+            
+            # Add/Edit buttons
+            btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+            self.add_btn = wx.Button(self, label=_("Add Rule"))
+            self.add_btn.Bind(wx.EVT_BUTTON, self.on_add_rule)
+            self.remove_btn = wx.Button(self, label=_("Remove Rule"))
+            self.remove_btn.Bind(wx.EVT_BUTTON, self.on_remove_rule)
+            
+            btn_sizer.Add(self.add_btn, 0, wx.ALL, 5)
+            btn_sizer.Add(self.remove_btn, 0, wx.ALL, 5)
+            app_box.Add(btn_sizer, 0, wx.ALIGN_CENTER)
+            
+            settingsSizer.Add(app_box, 1, wx.EXPAND | wx.ALL, 10)
 
-        # Section 2: Language Rates
-        rate_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Language Rates")), wx.VERTICAL)
-        
-        # List of rates
-        self.rates_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self.rates_list.InsertColumn(0, _("Language"), width=100)
-        self.rates_list.InsertColumn(1, _("Rate"), width=100)
-        
-        self.populate_rates_list()
-        
-        rate_box.Add(self.rates_list, 1, wx.EXPAND | wx.ALL, 5)
+            # Section 2: Language Rates
+            rate_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Language Rates")), wx.VERTICAL)
+            
+            # List of rates
+            self.rates_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+            self.rates_list.InsertColumn(0, _("Language"), width=100)
+            self.rates_list.InsertColumn(1, _("Rate"), width=100)
+            
+            self.populate_rates_list()
+            
+            rate_box.Add(self.rates_list, 1, wx.EXPAND | wx.ALL, 5)
 
-        # Edit Rate Button
-        self.edit_rate_btn = wx.Button(self, label=_("Edit Rate"))
-        self.edit_rate_btn.Bind(wx.EVT_BUTTON, self.on_edit_rate)
-        rate_box.Add(self.edit_rate_btn, 0, wx.ALIGN_CENTER | wx.ALL, 5)
-        
-        settingsSizer.Add(rate_box, 1, wx.EXPAND | wx.ALL, 10)
+            # Edit Rate Button
+            self.edit_rate_btn = wx.Button(self, label=_("Edit Rate"))
+            self.edit_rate_btn.Bind(wx.EVT_BUTTON, self.on_edit_rate)
+            rate_box.Add(self.edit_rate_btn, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+            
+            settingsSizer.Add(rate_box, 1, wx.EXPAND | wx.ALL, 10)
+        except Exception as e:
+            log.error(f"VoiceSpeedManager: Error building settings UI: {e}", exc_info=True)
+            # Add a visible error message to the panel so the user knows it failed
+            settingsSizer.Add(wx.StaticText(self, label=f"Error loading settings: {e}"), 0, wx.ALL, 10)
 
     def populate_rules_list(self):
-        self.rules_list.DeleteAllItems()
-        for app, data in conf.data["profiles"].items():
-            idx = self.rules_list.InsertItem(self.rules_list.GetItemCount(), app)
-            self.rules_list.SetItem(idx, 1, data.get("language", ""))
+        try:
+            self.rules_list.DeleteAllItems()
+            if not conf.data or "profiles" not in conf.data:
+                return
+            for app, data in conf.data["profiles"].items():
+                idx = self.rules_list.InsertItem(self.rules_list.GetItemCount(), str(app))
+                self.rules_list.SetItem(idx, 1, str(data.get("language", "")))
+        except Exception as e:
+            log.error(f"VoiceSpeedManager: Error populating rules: {e}")
 
     def populate_rates_list(self):
-        self.rates_list.DeleteAllItems()
-        for lang, rate in conf.data["rates"].items():
-            idx = self.rates_list.InsertItem(self.rates_list.GetItemCount(), lang)
-            self.rates_list.SetItem(idx, 1, str(rate))
+        try:
+            self.rates_list.DeleteAllItems()
+            if not conf.data or "rates" not in conf.data:
+                return
+            for lang, rate in conf.data["rates"].items():
+                idx = self.rates_list.InsertItem(self.rates_list.GetItemCount(), str(lang))
+                self.rates_list.SetItem(idx, 1, str(rate))
+        except Exception as e:
+            log.error(f"VoiceSpeedManager: Error populating rates: {e}")
 
     def on_add_rule(self, event):
         # Dialog to add rule
