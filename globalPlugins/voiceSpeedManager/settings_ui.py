@@ -3,8 +3,16 @@ import gui
 import addonHandler
 from .config import conf
 import synthDriverHandler
+from logHandler import log
 
 addonHandler.initTranslation()
+
+# Safety fallback for translation function
+if "_" not in globals():
+    try:
+        _ = wx.GetTranslation
+    except NameError:
+        def _(msg): return msg
 
 class VoiceSpeedSettingsPanel(gui.SettingsPanel):
     title = _("Voice Speed Manager")

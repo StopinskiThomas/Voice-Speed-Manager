@@ -4,20 +4,34 @@ import ui
 import gui
 from logHandler import log
 from .config import conf
-from .gui import VoiceSpeedSettingsPanel
+
+# Try to import Settings UI, but don't fail the whole plugin if it breaks
+try:
+    from .settings_ui import VoiceSpeedSettingsPanel
+except Exception as e:
+    log.error(f"VoiceSpeedManager: Failed to import Settings UI module: {e}")
+    VoiceSpeedSettingsPanel = None
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super(GlobalPlugin, self).__init__()
         self._last_app = None
-        gui.NVDASettingsDialog.categoryClasses.append(VoiceSpeedSettingsPanel)
+        log.info("VoiceSpeedManager: GlobalPlugin Initialized")
+        
+        if VoiceSpeedSettingsPanel:
+            try:
+                gui.NVDASettingsDialog.categoryClasses.append(VoiceSpeedSettingsPanel)
+                log.info("VoiceSpeedManager: Settings Panel registered")
+            except Exception as e:
+                log.error(f"VoiceSpeedManager: Failed to register settings panel: {e}")
 
     def terminate(self):
         super(GlobalPlugin, self).terminate()
-        try:
-            gui.NVDASettingsDialog.categoryClasses.remove(VoiceSpeedSettingsPanel)
-        except ValueError:
-            pass
+        if VoiceSpeedSettingsPanel:
+            try:
+                gui.NVDASettingsDialog.categoryClasses.remove(VoiceSpeedSettingsPanel)
+            except ValueError:
+                pass
 
     def event_gainFocus(self, obj, nextHandler):
         try:
