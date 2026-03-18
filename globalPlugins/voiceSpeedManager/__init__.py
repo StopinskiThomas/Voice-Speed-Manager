@@ -15,7 +15,6 @@ except Exception as e:
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super(GlobalPlugin, self).__init__()
-        self._last_app = None
         log.info("VoiceSpeedManager: GlobalPlugin Initialized")
         
         if VoiceSpeedSettingsPanel:
@@ -29,7 +28,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         super(GlobalPlugin, self).terminate()
         if VoiceSpeedSettingsPanel:
             try:
-                gui.NVDASettingsDialog.categoryClasses.remove(VoiceSpeedSettingsPanel)
+                if VoiceSpeedSettingsPanel in gui.NVDASettingsDialog.categoryClasses:
+                    gui.NVDASettingsDialog.categoryClasses.remove(VoiceSpeedSettingsPanel)
             except ValueError:
                 pass
 
@@ -40,73 +40,69 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 return
 
             app_name = obj.appModule.appName
-            # Normalize to .exe for config matching if needed, or just use appName
-            # Config uses "outlook.exe", appName is "outlook"
-            # We'll check both "outlook" and "outlook.exe"
+            # Check both "outlook" and "outlook.exe"
+            app_config = conf.get_app_details(app_name)
+            if not app_config:
+                 app_config = conf.get_app_details(app_name + ".exe")
             
-            # 1. App-based Language Switch
-            target_lang = None
-            profile = conf.get_profile(app_name)
-            if not profile:
-                 profile = conf.get_profile(app_name + ".exe")
-            
-            if profile and "language" in profile:
-                target_lang = profile["language"]
-                self._set_language(target_lang)
-            
-            # 2. Language-based Speed Adjustment
-            # We do this always on focus, or only if we switched? 
-            # Better to do it always to ensure consistency if user Alt-Tabs back
-            self._adjust_rate_for_current_language(target_lang)
+            if app_config:
+                self._handle_app_focus(app_config)
 
         except Exception as e:
-            log.error(f"VoiceSpeedManager: Error in event_gainFocus: {e}")
+            log.error(f"VoiceSpeedManager: Error in event_gainFocus: {e}", exc_info=True)
         
         nextHandler()
 
+    def _handle_app_focus(self, app_config):
+        profiles = app_config.get("profiles", [])
+        if not profiles:
+            return
+
+        # 1. Handle Auto-Switching
+        # Find the first profile with auto_switch enabled
+        auto_profile = next((p for p in profiles if p.get("auto_switch")), None)
+        if auto_profile:
+            self._set_language(auto_profile["language"])
+
+        # 2. Handle Rate Adjustment
+        # Get current language (it might have just changed)
+        synth = synthDriverHandler.getSynth()
+        current_lang = getattr(synth, "language", "")
+        
+        # Find profile matching current language
+        # We try exact match, then fuzzy match (e.g. "en-US" matches "en")
+        matched_profile = None
+        
+        # Exact match
+        matched_profile = next((p for p in profiles if p["language"].lower() == current_lang.lower()), None)
+        
+        # Fuzzy match (if no exact match)
+        if not matched_profile:
+             # Try matching start (e.g. profile "en" matches synth "en-US")
+             matched_profile = next((p for p in profiles if current_lang.lower().startswith(p["language"].lower())), None)
+
+        if matched_profile:
+            self._set_rate(matched_profile["rate"])
+
     def _set_language(self, lang_code):
         synth = synthDriverHandler.getSynth()
-        current_lang = synth.language
+        current_lang = getattr(synth, "language", None)
         
-        # Avoid redundant switching which might interrupt speech
         if current_lang == lang_code:
             return
 
         try:
-            # 1. Try direct assignment (most robust if synth supports it)
             synth.language = lang_code
             log.info(f"VoiceSpeedManager: Switched language to {lang_code}")
-            return
-        except Exception:
-            pass
-        
-        # 2. Fallback: Search in availableLanguages
-        try:
-            available = synth.availableLanguages
-            # normalized comparison
-            target = lang_code.lower().replace("-", "_")
-            
-            for lang in available:
-                l = lang.lower().replace("-", "_")
-                if l == target or l.startswith(target + "_"):
-                    synth.language = lang
-                    log.info(f"VoiceSpeedManager: Switched language to {lang} (matched from {lang_code})")
-                    return
-            
-            log.warning(f"VoiceSpeedManager: Could not find language match for {lang_code}")
-
         except Exception as e:
             log.error(f"VoiceSpeedManager: Failed to set language {lang_code}: {e}")
 
-    def _adjust_rate_for_current_language(self, forced_lang=None):
+    def _set_rate(self, rate):
         synth = synthDriverHandler.getSynth()
-        # If we just forced a language, use that. Otherwise ask synth.
-        lang = forced_lang if forced_lang else synth.language
-        
-        rate = conf.get_rate(lang)
-        if rate is not None:
-            # Only set if different to avoid jitter?
-            # But synth.rate might be float, config is int.
-            if abs(synth.rate - rate) > 1:
+        try:
+            current_rate = getattr(synth, "rate", None)
+            if current_rate is not None and abs(current_rate - rate) > 0:
                 synth.rate = rate
-                log.info(f"VoiceSpeedManager: Adjusted rate to {rate} for language {lang}")
+                log.info(f"VoiceSpeedManager: Adjusted rate to {rate}")
+        except Exception as e:
+            log.error(f"VoiceSpeedManager: Failed to set rate {rate}: {e}")

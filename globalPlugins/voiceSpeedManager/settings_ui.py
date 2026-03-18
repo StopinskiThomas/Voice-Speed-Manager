@@ -1,183 +1,178 @@
 import wx
-import gui
-import addonHandler
-from .config import conf
-import synthDriverHandler
+import os
+from gui.settingsDialogs import SettingsPanel
 from logHandler import log
+from .config import conf
 
-addonHandler.initTranslation()
-
-# Safety fallback for translation function
-if "_" not in globals():
-    try:
-        _ = wx.GetTranslation
-    except NameError:
-        def _(msg): return msg
-
-class VoiceSpeedSettingsPanel(gui.SettingsPanel):
-    title = _("Voice Speed Manager")
+class VoiceSpeedSettingsPanel(SettingsPanel):
+    title = "Voice Speed Manager"
 
     def makeSettings(self, settingsSizer):
         try:
-            # Section 1: Application Rules
-            app_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Application Rules")), wx.VERTICAL)
-            
-            # List of rules
-            self.rules_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-            self.rules_list.InsertColumn(0, _("Application (.exe)"), width=150)
-            self.rules_list.InsertColumn(1, _("Language"), width=100)
-            
-            self.populate_rules_list()
-            
-            app_box.Add(self.rules_list, 1, wx.EXPAND | wx.ALL, 5)
-            
-            # Add/Edit buttons
-            btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-            self.add_btn = wx.Button(self, label=_("Add Rule"))
-            self.add_btn.Bind(wx.EVT_BUTTON, self.on_add_rule)
-            self.remove_btn = wx.Button(self, label=_("Remove Rule"))
-            self.remove_btn.Bind(wx.EVT_BUTTON, self.on_remove_rule)
-            
-            btn_sizer.Add(self.add_btn, 0, wx.ALL, 5)
-            btn_sizer.Add(self.remove_btn, 0, wx.ALL, 5)
-            app_box.Add(btn_sizer, 0, wx.ALIGN_CENTER)
-            
-            settingsSizer.Add(app_box, 1, wx.EXPAND | wx.ALL, 10)
+            # Main Horizontal Sizer
+            mainSizer = wx.BoxSizer(wx.HORIZONTAL)
 
-            # Section 2: Language Rates
-            rate_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Language Rates")), wx.VERTICAL)
+            # --- Left Side: Applications ---
+            appBox = wx.StaticBoxSizer(wx.StaticBox(self, label="Applications"), wx.VERTICAL)
             
-            # List of rates
-            self.rates_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-            self.rates_list.InsertColumn(0, _("Language"), width=100)
-            self.rates_list.InsertColumn(1, _("Rate"), width=100)
-            
-            self.populate_rates_list()
-            
-            rate_box.Add(self.rates_list, 1, wx.EXPAND | wx.ALL, 5)
+            # App List
+            self.appList = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+            self.appList.InsertColumn(0, "Executable", width=150)
+            self.appList.InsertColumn(1, "Path", width=200)
+            self.appList.Bind(wx.EVT_LIST_ITEM_SELECTED, self.onAppSelected)
+            self.appList.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.onAppDeselected)
+            appBox.Add(self.appList, 1, wx.EXPAND | wx.ALL, 5)
 
-            # Edit Rate Button
-            self.edit_rate_btn = wx.Button(self, label=_("Edit Rate"))
-            self.edit_rate_btn.Bind(wx.EVT_BUTTON, self.on_edit_rate)
-            rate_box.Add(self.edit_rate_btn, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+            # App Buttons
+            appBtnSizer = wx.BoxSizer(wx.HORIZONTAL)
+            self.addAppBtn = wx.Button(self, label="Add App...")
+            self.addAppBtn.Bind(wx.EVT_BUTTON, self.onAddApp)
+            appBtnSizer.Add(self.addAppBtn, 0, wx.RIGHT, 5)
+
+            self.removeAppBtn = wx.Button(self, label="Remove App")
+            self.removeAppBtn.Bind(wx.EVT_BUTTON, self.onRemoveApp)
+            self.removeAppBtn.Disable()
+            appBtnSizer.Add(self.removeAppBtn, 0, wx.RIGHT, 5)
+
+            appBox.Add(appBtnSizer, 0, wx.ALL, 5)
+            mainSizer.Add(appBox, 1, wx.EXPAND | wx.ALL, 5)
+
+            # --- Right Side: Language Profiles ---
+            langBox = wx.StaticBoxSizer(wx.StaticBox(self, label="Language Profiles"), wx.VERTICAL)
             
-            settingsSizer.Add(rate_box, 1, wx.EXPAND | wx.ALL, 10)
+            # Profile List
+            self.profileList = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+            self.profileList.InsertColumn(0, "Language", width=100)
+            self.profileList.InsertColumn(1, "Rate", width=80)
+            self.profileList.InsertColumn(2, "Auto-Switch", width=100)
+            langBox.Add(self.profileList, 1, wx.EXPAND | wx.ALL, 5)
+
+            # Profile Buttons
+            profileBtnSizer = wx.BoxSizer(wx.HORIZONTAL)
+            self.addProfileBtn = wx.Button(self, label="Add Profile...")
+            self.addProfileBtn.Bind(wx.EVT_BUTTON, self.onAddProfile)
+            self.addProfileBtn.Disable() # Disabled until app selected
+            profileBtnSizer.Add(self.addProfileBtn, 0, wx.RIGHT, 5)
+
+            self.removeProfileBtn = wx.Button(self, label="Remove Profile")
+            self.removeProfileBtn.Bind(wx.EVT_BUTTON, self.onRemoveProfile)
+            self.removeProfileBtn.Disable()
+            profileBtnSizer.Add(self.removeProfileBtn, 0, wx.RIGHT, 5)
+
+            langBox.Add(profileBtnSizer, 0, wx.ALL, 5)
+            mainSizer.Add(langBox, 1, wx.EXPAND | wx.ALL, 5)
+
+            settingsSizer.Add(mainSizer, 1, wx.EXPAND | wx.ALL, 5)
+
+            # Initial Populate
+            self.populateAppList()
+
         except Exception as e:
-            log.error(f"VoiceSpeedManager: Error building settings UI: {e}", exc_info=True)
-            # Add a visible error message to the panel so the user knows it failed
-            settingsSizer.Add(wx.StaticText(self, label=f"Error loading settings: {e}"), 0, wx.ALL, 10)
+            log.error(f"VoiceSpeedManager: Error in makeSettings: {e}", exc_info=True)
+            settingsSizer.Add(wx.StaticText(self, label=f"Error: {e}"), 0, wx.ALL, 10)
 
-    def populate_rules_list(self):
-        try:
-            self.rules_list.DeleteAllItems()
-            if not conf.data or "profiles" not in conf.data:
+    def populateAppList(self):
+        self.appList.DeleteAllItems()
+        apps = conf.get_apps()
+        for exe, data in apps.items():
+            idx = self.appList.InsertItem(self.appList.GetItemCount(), exe)
+            self.appList.SetItem(idx, 1, data.get("path", ""))
+
+    def populateProfileList(self, exe_name):
+        self.profileList.DeleteAllItems()
+        profiles = conf.get_profiles(exe_name)
+        for p in profiles:
+            idx = self.profileList.InsertItem(self.profileList.GetItemCount(), p["language"])
+            self.profileList.SetItem(idx, 1, str(p["rate"]))
+            self.profileList.SetItem(idx, 2, "Yes" if p.get("auto_switch") else "No")
+
+    def getSelectedApp(self):
+        sel = self.appList.GetFirstSelected()
+        if sel != -1:
+            return self.appList.GetItemText(sel)
+        return None
+
+    def onAppSelected(self, event):
+        exe_name = self.getSelectedApp()
+        if exe_name:
+            self.removeAppBtn.Enable()
+            self.addProfileBtn.Enable()
+            self.populateProfileList(exe_name)
+
+    def onAppDeselected(self, event):
+        self.removeAppBtn.Disable()
+        self.addProfileBtn.Disable()
+        self.removeProfileBtn.Disable()
+        self.profileList.DeleteAllItems()
+
+    def onAddApp(self, event):
+        with wx.FileDialog(self, "Select Executable", wildcard="Executable files (*.exe)|*.exe",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
                 return
-            for app, data in conf.data["profiles"].items():
-                idx = self.rules_list.InsertItem(self.rules_list.GetItemCount(), str(app))
-                self.rules_list.SetItem(idx, 1, str(data.get("language", "")))
-        except Exception as e:
-            log.error(f"VoiceSpeedManager: Error populating rules: {e}")
+            path = fileDialog.GetPath()
+            exe_name = os.path.basename(path)
+            if conf.add_app(exe_name, full_path=path):
+                self.populateAppList()
+            else:
+                wx.MessageBox(f"Application '{exe_name}' is already configured.", "Error", wx.OK | wx.ICON_ERROR)
 
-    def populate_rates_list(self):
-        try:
-            self.rates_list.DeleteAllItems()
-            if not conf.data or "rates" not in conf.data:
-                return
-            for lang, rate in conf.data["rates"].items():
-                idx = self.rates_list.InsertItem(self.rates_list.GetItemCount(), str(lang))
-                self.rates_list.SetItem(idx, 1, str(rate))
-        except Exception as e:
-            log.error(f"VoiceSpeedManager: Error populating rates: {e}")
+    def onRemoveApp(self, event):
+        exe_name = self.getSelectedApp()
+        if exe_name:
+            if wx.MessageBox(f"Remove configuration for {exe_name}?", "Confirm", wx.YES_NO | wx.ICON_QUESTION) == wx.YES:
+                conf.remove_app(exe_name)
+                self.populateAppList()
+                self.profileList.DeleteAllItems()
+                self.removeAppBtn.Disable()
+                self.addProfileBtn.Disable()
 
-    def on_add_rule(self, event):
-        # Dialog to add rule
-        dlg = AddRuleDialog(self)
+    def onAddProfile(self, event):
+        exe_name = self.getSelectedApp()
+        if not exe_name: return
+        
+        dlg = ProfileDialog(self, "Add Language Profile")
         if dlg.ShowModal() == wx.ID_OK:
-            app = dlg.app_input.GetValue()
-            lang = dlg.lang_input.GetValue()
-            if app and lang:
-                conf.set_profile(app, lang)
-                self.populate_rules_list()
+            lang, rate, auto = dlg.GetValues()
+            if lang and rate.isdigit():
+                conf.add_profile(exe_name, lang, int(rate), auto)
+                self.populateProfileList(exe_name)
         dlg.Destroy()
 
-    def on_remove_rule(self, event):
-        sel = self.rules_list.GetFirstSelected()
-        if sel != -1:
-            app = self.rules_list.GetItemText(sel)
-            if app in conf.data["profiles"]:
-                del conf.data["profiles"][app]
-                conf.save()
-                self.populate_rules_list()
+    def onRemoveProfile(self, event):
+        exe_name = self.getSelectedApp()
+        sel = self.profileList.GetFirstSelected()
+        if exe_name and sel != -1:
+            lang = self.profileList.GetItemText(sel)
+            conf.remove_profile(exe_name, lang)
+            self.populateProfileList(exe_name)
 
-    def on_edit_rate(self, event):
-        sel = self.rates_list.GetFirstSelected()
-        if sel != -1:
-            lang = self.rates_list.GetItemText(sel)
-            current_rate = conf.get_rate(lang)
-            dlg = EditRateDialog(self, lang, current_rate)
-            if dlg.ShowModal() == wx.ID_OK:
-                try:
-                    new_rate = int(dlg.rate_input.GetValue())
-                    conf.set_rate(lang, new_rate)
-                    self.populate_rates_list()
-                except ValueError:
-                    pass
-            dlg.Destroy()
-        else:
-             # Allow adding a new rate for a language not in list?
-             # For now, just edit existing.
-             # Actually, user needs to ADD a language rate mapping.
-             # So this button should be "Add/Edit Rate"
-             self.on_add_edit_rate(event)
 
-    def on_add_edit_rate(self, event):
-        # Simplified: Just one dialog for add/edit
-        dlg = EditRateDialog(self, "", 50) 
-        if dlg.ShowModal() == wx.ID_OK:
-            lang = dlg.lang_input.GetValue()
-            try:
-                rate = int(dlg.rate_input.GetValue())
-                if lang:
-                     conf.set_rate(lang, rate)
-                     self.populate_rates_list()
-            except ValueError:
-                pass
-        dlg.Destroy()
-
-class AddRuleDialog(wx.Dialog):
-    def __init__(self, parent):
-        super().__init__(parent, title=_("Add Application Rule"))
+class ProfileDialog(wx.Dialog):
+    def __init__(self, parent, title):
+        super(ProfileDialog, self).__init__(parent, title=title)
+        
         sizer = wx.BoxSizer(wx.VERTICAL)
         
-        sizer.Add(wx.StaticText(self, label=_("Application (.exe):")), 0, wx.ALL, 5)
-        self.app_input = wx.TextCtrl(self)
-        sizer.Add(self.app_input, 0, wx.EXPAND | wx.ALL, 5)
+        # Language Code
+        sizer.Add(wx.StaticText(self, label="Language Code (e.g. en, de-DE):"), 0, wx.ALL, 5)
+        self.langInput = wx.TextCtrl(self)
+        sizer.Add(self.langInput, 0, wx.EXPAND | wx.ALL, 5)
         
-        sizer.Add(wx.StaticText(self, label=_("Language Code (e.g. en, de):")), 0, wx.ALL, 5)
-        self.lang_input = wx.TextCtrl(self)
-        sizer.Add(self.lang_input, 0, wx.EXPAND | wx.ALL, 5)
+        # Rate
+        sizer.Add(wx.StaticText(self, label="Rate (0-100):"), 0, wx.ALL, 5)
+        self.rateInput = wx.TextCtrl(self)
+        sizer.Add(self.rateInput, 0, wx.EXPAND | wx.ALL, 5)
         
-        btns = self.CreateButtonSizer(wx.OK | wx.CANCEL)
-        sizer.Add(btns, 0, wx.ALIGN_CENTER | wx.ALL, 10)
+        # Auto Switch
+        self.autoSwitchCheck = wx.CheckBox(self, label="Auto-switch to this language on focus")
+        sizer.Add(self.autoSwitchCheck, 0, wx.ALL, 10)
         
-        self.SetSizer(sizer)
-        self.Fit()
+        btns = self.CreateButtonSizer(wx.ID_OK | wx.ID_CANCEL)
+        sizer.Add(btns, 0, wx.EXPAND | wx.ALL, 5)
+        
+        self.SetSizerAndFit(sizer)
+        self.Centre()
 
-class EditRateDialog(wx.Dialog):
-    def __init__(self, parent, lang, rate):
-        super().__init__(parent, title=_("Edit Language Rate"))
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        sizer.Add(wx.StaticText(self, label=_("Language Code:")), 0, wx.ALL, 5)
-        self.lang_input = wx.TextCtrl(self, value=lang)
-        sizer.Add(self.lang_input, 0, wx.EXPAND | wx.ALL, 5)
-        
-        sizer.Add(wx.StaticText(self, label=_("Rate (0-100):")), 0, wx.ALL, 5)
-        self.rate_input = wx.TextCtrl(self, value=str(rate))
-        sizer.Add(self.rate_input, 0, wx.EXPAND | wx.ALL, 5)
-        
-        btns = self.CreateButtonSizer(wx.OK | wx.CANCEL)
-        sizer.Add(btns, 0, wx.ALIGN_CENTER | wx.ALL, 10)
-        
-        self.SetSizer(sizer)
-        self.Fit()
+    def GetValues(self):
+        return self.langInput.GetValue(), self.rateInput.GetValue(), self.autoSwitchCheck.IsChecked()
