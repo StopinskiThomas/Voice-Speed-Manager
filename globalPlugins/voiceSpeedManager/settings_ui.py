@@ -147,6 +147,14 @@ class VoiceSpeedSettingsPanel(SettingsPanel):
             conf.remove_profile(exe_name, lang)
             self.populateProfileList(exe_name)
 
+    def onSave(self):
+        """
+        Called when the user presses OK or Apply in the Settings Dialog.
+        Currently, changes are saved immediately by the interactive buttons,
+        but this method is required by the abstract base class.
+        """
+        pass
+
 
 class ProfileDialog(wx.Dialog):
     def __init__(self, parent, title):
