@@ -138,7 +138,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         # 3. Fallback: Switch Voice
         try:
             log.debug(f"VoiceSpeedManager: Attempting voice switch for language {lang_code}...")
-            available_voices = getattr(synth, "availableVoices", [])
+            # Convert generator to list to iterate multiple times
+            available_voices = list(getattr(synth, "availableVoices", []))
             
             # First pass: Exact language match or containment
             for voice in available_voices:
@@ -152,7 +153,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                             target_norm.startswith(v_lang_norm + "_")):
                             
                             synth.voice = voice.id
-                            log.info(f"VoiceSpeedManager: Switched voice to {voice.name} for language {lang_code}")
+                            log.info(f"VoiceSpeedManager: Switched voice to {getattr(voice, 'name', 'Unknown')} for language {lang_code}")
                             return
                 except Exception:
                     continue
@@ -163,12 +164,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     v_id_norm = str(voice.id).lower().replace("-", "_")
                     if target_norm in v_id_norm:
                          synth.voice = voice.id
-                         log.info(f"VoiceSpeedManager: Switched voice to {voice.name} (ID match) for language {lang_code}")
+                         log.info(f"VoiceSpeedManager: Switched voice to {getattr(voice, 'name', 'Unknown')} (ID match) for language {lang_code}")
                          return
                 except Exception:
                     continue
-
-            log.warning(f"VoiceSpeedManager: Could not find a voice or language match for {lang_code}. Available voices: {[v.name for v in available_voices]}")
+            
+            # Safe logging of available voices
+            voice_names = [getattr(v, 'name', str(v)) for v in available_voices]
+            log.warning(f"VoiceSpeedManager: Could not find a voice or language match for {lang_code}. Available voices: {voice_names}")
 
         except Exception as e:
             log.error(f"VoiceSpeedManager: Failed to switch voice/language to {lang_code}: {repr(e)}")
