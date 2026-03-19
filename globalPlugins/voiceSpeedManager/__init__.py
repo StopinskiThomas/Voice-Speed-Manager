@@ -87,9 +87,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         
         # Fuzzy match (if no exact match)
         if not matched_profile:
-             # Try matching start (e.g. profile "en" matches synth "en-US")
              log.debug(f"VoiceSpeedManager: No exact match for {current_lang}. Trying fuzzy match...")
+             # 1. Current starts with Profile (e.g. synth "en_US" matches profile "en")
              matched_profile = next((p for p in profiles if current_lang.lower().startswith(p["language"].lower())), None)
+             
+             # 2. Profile starts with Current (e.g. synth "en" matches profile "en_US")
+             if not matched_profile:
+                 matched_profile = next((p for p in profiles if p["language"].lower().startswith(current_lang.lower())), None)
 
         if matched_profile:
             log.info(f"VoiceSpeedManager: Matched profile: {matched_profile}. Applying rate: {matched_profile['rate']}")
@@ -115,52 +119,56 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         except Exception as e:
             log.debug(f"VoiceSpeedManager: Direct assignment of language '{lang_code}' failed: {e}")
 
-        # 2. Fallback: Search in availableLanguages (for synths that expose languages but require specific strings)
+        # 2. Fallback: Search in availableLanguages
         try:
             available = getattr(synth, "availableLanguages", [])
             for lang in available:
                 l_str = str(lang)
                 l_norm = l_str.lower().replace("-", "_")
                 
-                if l_norm == target_norm or l_norm.startswith(target_norm + "_"):
+                # Check: Available starts with Target (e.g. "en_US" matches "en")
+                # OR Target starts with Available (e.g. "en" matches "en_US" - reverse fuzzy)
+                if l_norm == target_norm or l_norm.startswith(target_norm + "_") or target_norm.startswith(l_norm + "_"):
                     synth.language = lang
                     log.info(f"VoiceSpeedManager: Switched language to {lang} (matched from {lang_code})")
                     return
         except Exception as e:
             log.debug(f"VoiceSpeedManager: availableLanguages search failed: {e}")
 
-        # 3. Fallback: Switch Voice (essential for OneCore and others)
+        # 3. Fallback: Switch Voice
         try:
             log.debug(f"VoiceSpeedManager: Attempting voice switch for language {lang_code}...")
             available_voices = getattr(synth, "availableVoices", [])
             
-            # First pass: Exact language match
+            # First pass: Exact language match or containment
             for voice in available_voices:
                 try:
-                    # voice.language might be None or a string
                     v_lang = getattr(voice, "language", "")
                     if v_lang:
                         v_lang_norm = v_lang.lower().replace("-", "_")
-                        if v_lang_norm == target_norm or v_lang_norm.startswith(target_norm + "_"):
+                        # Check bidirectional match
+                        if (v_lang_norm == target_norm or 
+                            v_lang_norm.startswith(target_norm + "_") or 
+                            target_norm.startswith(v_lang_norm + "_")):
+                            
                             synth.voice = voice.id
                             log.info(f"VoiceSpeedManager: Switched voice to {voice.name} for language {lang_code}")
                             return
                 except Exception:
                     continue
             
-            # Second pass: Match language in voice name (less reliable but useful fallback)
+            # Second pass: Check ID for language code (some IDs contain 'en-US' etc)
             for voice in available_voices:
                 try:
-                    v_name_norm = voice.name.lower()
-                    # simplistic check: if "german" or "english" or "de" / "en" in name? 
-                    # Too risky for short codes.
-                    # But often voice names contain the code, e.g. "Microsoft Hedda Desktop - German"
-                    # We can try to map some common codes to names if needed, but let's stick to 'language' property first.
-                    pass
+                    v_id_norm = str(voice.id).lower().replace("-", "_")
+                    if target_norm in v_id_norm:
+                         synth.voice = voice.id
+                         log.info(f"VoiceSpeedManager: Switched voice to {voice.name} (ID match) for language {lang_code}")
+                         return
                 except Exception:
                     continue
 
-            log.warning(f"VoiceSpeedManager: Could not find a voice or language match for {lang_code}")
+            log.warning(f"VoiceSpeedManager: Could not find a voice or language match for {lang_code}. Available voices: {[v.name for v in available_voices]}")
 
         except Exception as e:
             log.error(f"VoiceSpeedManager: Failed to switch voice/language to {lang_code}: {repr(e)}")
