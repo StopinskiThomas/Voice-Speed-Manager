@@ -4,6 +4,8 @@ from gui.settingsDialogs import SettingsPanel
 from logHandler import log
 from .config import conf
 
+import synthDriverHandler
+
 class VoiceSpeedSettingsPanel(SettingsPanel):
     title = "Voice Speed Manager"
 
@@ -162,9 +164,31 @@ class ProfileDialog(wx.Dialog):
         
         sizer = wx.BoxSizer(wx.VERTICAL)
         
-        # Language Code
-        sizer.Add(wx.StaticText(self, label="Language Code (e.g. en, de-DE):"), 0, wx.ALL, 5)
-        self.langInput = wx.TextCtrl(self)
+        # Language Selection
+        sizer.Add(wx.StaticText(self, label="Language:"), 0, wx.ALL, 5)
+        
+        # Get available languages from SynthDriver
+        try:
+            synth = synthDriverHandler.getSynth()
+            self.languages = getattr(synth, "availableLanguages", [])
+            # If availableLanguages is a list of objects, we might need to handle it. 
+            # Usually it's a list of strings (codes).
+            # Some synths like OneCore return objects, need to check string representation.
+            self.lang_choices = [str(l) for l in self.languages]
+            self.lang_choices.sort()
+        except Exception:
+            self.lang_choices = []
+
+        if not self.lang_choices:
+            # Fallback if no languages found or error
+            self.langInput = wx.TextCtrl(self)
+            self.use_choice = False
+        else:
+            self.langInput = wx.Choice(self, choices=self.lang_choices)
+            if self.lang_choices:
+                self.langInput.SetSelection(0)
+            self.use_choice = True
+            
         sizer.Add(self.langInput, 0, wx.EXPAND | wx.ALL, 5)
         
         # Rate
@@ -183,4 +207,8 @@ class ProfileDialog(wx.Dialog):
         self.Centre()
 
     def GetValues(self):
-        return self.langInput.GetValue(), self.rateInput.GetValue(), self.autoSwitchCheck.IsChecked()
+        if self.use_choice:
+            lang = self.lang_choices[self.langInput.GetSelection()]
+        else:
+            lang = self.langInput.GetValue()
+        return lang, self.rateInput.GetValue(), self.autoSwitchCheck.IsChecked()
