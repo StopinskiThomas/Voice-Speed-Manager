@@ -88,14 +88,39 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         synth = synthDriverHandler.getSynth()
         current_lang = getattr(synth, "language", None)
         
+        # Avoid redundant switching
         if current_lang == lang_code:
             return
 
+        # 1. Try direct assignment
         try:
             synth.language = lang_code
             log.info(f"VoiceSpeedManager: Switched language to {lang_code}")
+            return
         except Exception as e:
-            log.error(f"VoiceSpeedManager: Failed to set language {lang_code}: {e}")
+            log.debug(f"VoiceSpeedManager: Direct assignment of language '{lang_code}' failed: {e}")
+
+        # 2. Fallback: Search in availableLanguages with normalization
+        try:
+            available = getattr(synth, "availableLanguages", [])
+            # normalized comparison target
+            target = lang_code.lower().replace("-", "_")
+
+            for lang in available:
+                # Convert lang to string just in case it's an object, then normalize
+                l_str = str(lang)
+                l_norm = l_str.lower().replace("-", "_")
+                
+                # Check for exact match or prefix match (e.g. target "en" matches "en_US")
+                if l_norm == target or l_norm.startswith(target + "_"):
+                    synth.language = lang
+                    log.info(f"VoiceSpeedManager: Switched language to {lang} (matched from {lang_code})")
+                    return
+
+            log.warning(f"VoiceSpeedManager: Could not find language match for {lang_code}")
+
+        except Exception as e:
+            log.error(f"VoiceSpeedManager: Failed to set language {lang_code}: {repr(e)}")
 
     def _set_rate(self, rate):
         synth = synthDriverHandler.getSynth()
