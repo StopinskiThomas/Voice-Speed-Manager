@@ -101,39 +101,69 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         synth = synthDriverHandler.getSynth()
         current_lang = getattr(synth, "language", None)
         
-        # Avoid redundant switching
+        # Avoid redundant switching if we are already confident
         if current_lang == lang_code:
             return
 
-        # 1. Try direct assignment
+        target_norm = lang_code.lower().replace("-", "_")
+
+        # 1. Try direct assignment (some synths support this)
         try:
             synth.language = lang_code
-            log.info(f"VoiceSpeedManager: Switched language to {lang_code}")
+            log.info(f"VoiceSpeedManager: Switched language to {lang_code} via property")
             return
         except Exception as e:
             log.debug(f"VoiceSpeedManager: Direct assignment of language '{lang_code}' failed: {e}")
 
-        # 2. Fallback: Search in availableLanguages with normalization
+        # 2. Fallback: Search in availableLanguages (for synths that expose languages but require specific strings)
         try:
             available = getattr(synth, "availableLanguages", [])
-            # normalized comparison target
-            target = lang_code.lower().replace("-", "_")
-
             for lang in available:
-                # Convert lang to string just in case it's an object, then normalize
                 l_str = str(lang)
                 l_norm = l_str.lower().replace("-", "_")
                 
-                # Check for exact match or prefix match (e.g. target "en" matches "en_US")
-                if l_norm == target or l_norm.startswith(target + "_"):
+                if l_norm == target_norm or l_norm.startswith(target_norm + "_"):
                     synth.language = lang
                     log.info(f"VoiceSpeedManager: Switched language to {lang} (matched from {lang_code})")
                     return
+        except Exception as e:
+            log.debug(f"VoiceSpeedManager: availableLanguages search failed: {e}")
 
-            log.warning(f"VoiceSpeedManager: Could not find language match for {lang_code}")
+        # 3. Fallback: Switch Voice (essential for OneCore and others)
+        try:
+            log.debug(f"VoiceSpeedManager: Attempting voice switch for language {lang_code}...")
+            available_voices = getattr(synth, "availableVoices", [])
+            
+            # First pass: Exact language match
+            for voice in available_voices:
+                try:
+                    # voice.language might be None or a string
+                    v_lang = getattr(voice, "language", "")
+                    if v_lang:
+                        v_lang_norm = v_lang.lower().replace("-", "_")
+                        if v_lang_norm == target_norm or v_lang_norm.startswith(target_norm + "_"):
+                            synth.voice = voice.id
+                            log.info(f"VoiceSpeedManager: Switched voice to {voice.name} for language {lang_code}")
+                            return
+                except Exception:
+                    continue
+            
+            # Second pass: Match language in voice name (less reliable but useful fallback)
+            for voice in available_voices:
+                try:
+                    v_name_norm = voice.name.lower()
+                    # simplistic check: if "german" or "english" or "de" / "en" in name? 
+                    # Too risky for short codes.
+                    # But often voice names contain the code, e.g. "Microsoft Hedda Desktop - German"
+                    # We can try to map some common codes to names if needed, but let's stick to 'language' property first.
+                    pass
+                except Exception:
+                    continue
+
+            log.warning(f"VoiceSpeedManager: Could not find a voice or language match for {lang_code}")
 
         except Exception as e:
-            log.error(f"VoiceSpeedManager: Failed to set language {lang_code}: {repr(e)}")
+            log.error(f"VoiceSpeedManager: Failed to switch voice/language to {lang_code}: {repr(e)}")
 
     def _set_rate(self, rate):
         synth = synthDriverHandler.getSynth()
