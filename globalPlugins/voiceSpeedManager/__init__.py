@@ -40,13 +40,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 return
 
             app_name = obj.appModule.appName
+            log.info(f"VoiceSpeedManager: Focus entered. App: {app_name}")
+            
             # Check both "outlook" and "outlook.exe"
             app_config = conf.get_app_details(app_name)
             if not app_config:
+                 log.debug(f"VoiceSpeedManager: No config for '{app_name}', trying '{app_name}.exe'")
                  app_config = conf.get_app_details(app_name + ".exe")
             
             if app_config:
+                log.info(f"VoiceSpeedManager: Found config for {app_name}: {app_config}")
                 self._handle_app_focus(app_config)
+            else:
+                log.debug(f"VoiceSpeedManager: No configuration found for {app_name}")
 
         except Exception as e:
             log.error(f"VoiceSpeedManager: Error in event_gainFocus: {e}", exc_info=True)
@@ -56,18 +62,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def _handle_app_focus(self, app_config):
         profiles = app_config.get("profiles", [])
         if not profiles:
+            log.debug("VoiceSpeedManager: No profiles defined for this app.")
             return
 
         # 1. Handle Auto-Switching
         # Find the first profile with auto_switch enabled
         auto_profile = next((p for p in profiles if p.get("auto_switch")), None)
         if auto_profile:
+            log.info(f"VoiceSpeedManager: Auto-switching enabled. Target: {auto_profile['language']}")
             self._set_language(auto_profile["language"])
 
         # 2. Handle Rate Adjustment
         # Get current language (it might have just changed)
         synth = synthDriverHandler.getSynth()
         current_lang = getattr(synth, "language", "")
+        log.info(f"VoiceSpeedManager: Current synth language: {current_lang}")
         
         # Find profile matching current language
         # We try exact match, then fuzzy match (e.g. "en-US" matches "en")
@@ -79,10 +88,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         # Fuzzy match (if no exact match)
         if not matched_profile:
              # Try matching start (e.g. profile "en" matches synth "en-US")
+             log.debug(f"VoiceSpeedManager: No exact match for {current_lang}. Trying fuzzy match...")
              matched_profile = next((p for p in profiles if current_lang.lower().startswith(p["language"].lower())), None)
 
         if matched_profile:
+            log.info(f"VoiceSpeedManager: Matched profile: {matched_profile}. Applying rate: {matched_profile['rate']}")
             self._set_rate(matched_profile["rate"])
+        else:
+            log.info(f"VoiceSpeedManager: No matching profile found for language {current_lang} in {profiles}")
 
     def _set_language(self, lang_code):
         synth = synthDriverHandler.getSynth()
