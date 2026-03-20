@@ -141,30 +141,37 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             # Convert generator to list to iterate multiple times
             available_voices = list(getattr(synth, "availableVoices", []))
             
-            # First pass: Exact language match or containment
+            # First pass: Check for language attribute (if voice is an object)
             for voice in available_voices:
                 try:
-                    v_lang = getattr(voice, "language", "")
+                    v_lang = getattr(voice, "language", None)
                     if v_lang:
-                        v_lang_norm = v_lang.lower().replace("-", "_")
-                        # Check bidirectional match
+                        v_lang_norm = str(v_lang).lower().replace("-", "_")
                         if (v_lang_norm == target_norm or 
                             v_lang_norm.startswith(target_norm + "_") or 
                             target_norm.startswith(v_lang_norm + "_")):
                             
-                            synth.voice = voice.id
+                            voice_id = getattr(voice, "id", voice)
+                            synth.voice = voice_id
                             log.info(f"VoiceSpeedManager: Switched voice to {getattr(voice, 'name', 'Unknown')} for language {lang_code}")
                             return
                 except Exception:
                     continue
             
-            # Second pass: Check ID for language code (some IDs contain 'en-US' etc)
+            # Second pass: Check ID or Name string for language code
             for voice in available_voices:
                 try:
-                    v_id_norm = str(voice.id).lower().replace("-", "_")
-                    if target_norm in v_id_norm:
-                         synth.voice = voice.id
-                         log.info(f"VoiceSpeedManager: Switched voice to {getattr(voice, 'name', 'Unknown')} (ID match) for language {lang_code}")
+                    # Handle both objects with .id/.name and simple string IDs
+                    v_id = getattr(voice, "id", str(voice))
+                    v_name = getattr(voice, "name", str(voice))
+                    
+                    v_id_norm = str(v_id).lower().replace("-", "_")
+                    v_name_norm = str(v_name).lower().replace("-", "_")
+                    
+                    # Check if target code (e.g. "en_us") is in ID or Name
+                    if target_norm in v_id_norm or target_norm in v_name_norm:
+                         synth.voice = v_id
+                         log.info(f"VoiceSpeedManager: Switched voice to {v_name} (ID/Name match) for language {lang_code}")
                          return
                 except Exception:
                     continue
