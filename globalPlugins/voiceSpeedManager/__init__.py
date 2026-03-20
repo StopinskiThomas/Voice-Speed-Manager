@@ -1,6 +1,5 @@
 import globalPluginHandler
 import synthDriverHandler
-import ui
 import gui
 from logHandler import log
 from .config import conf
@@ -15,12 +14,9 @@ except Exception as e:
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super(GlobalPlugin, self).__init__()
-        log.info("VoiceSpeedManager: GlobalPlugin Initialized")
-        
         if VoiceSpeedSettingsPanel:
             try:
                 gui.NVDASettingsDialog.categoryClasses.append(VoiceSpeedSettingsPanel)
-                log.info("VoiceSpeedManager: Settings Panel registered")
             except Exception as e:
                 log.error(f"VoiceSpeedManager: Failed to register settings panel: {e}")
 
@@ -40,19 +36,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 return
 
             app_name = obj.appModule.appName
-            log.info(f"VoiceSpeedManager: Focus entered. App: {app_name}")
             
-            # Check both "outlook" and "outlook.exe"
+            # Check for configuration using both "app" and "app.exe"
             app_config = conf.get_app_details(app_name)
             if not app_config:
-                 log.debug(f"VoiceSpeedManager: No config for '{app_name}', trying '{app_name}.exe'")
                  app_config = conf.get_app_details(app_name + ".exe")
             
             if app_config:
-                log.info(f"VoiceSpeedManager: Found config for {app_name}: {app_config}")
                 self._handle_app_focus(app_config)
-            else:
-                log.debug(f"VoiceSpeedManager: No configuration found for {app_name}")
 
         except Exception as e:
             log.error(f"VoiceSpeedManager: Error in event_gainFocus: {e}", exc_info=True)
@@ -60,34 +51,31 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         nextHandler()
 
     def _handle_app_focus(self, app_config):
+        """
+        Applies the language and rate settings based on the application's profile.
+        """
         profiles = app_config.get("profiles", [])
         if not profiles:
-            log.debug("VoiceSpeedManager: No profiles defined for this app.")
             return
 
         # 1. Handle Auto-Switching
         # Find the first profile with auto_switch enabled
         auto_profile = next((p for p in profiles if p.get("auto_switch")), None)
         if auto_profile:
-            log.info(f"VoiceSpeedManager: Auto-switching enabled. Target: {auto_profile['language']}")
             self._set_language(auto_profile["language"])
 
         # 2. Handle Rate Adjustment
-        # Get current language (it might have just changed)
         synth = synthDriverHandler.getSynth()
         current_lang = getattr(synth, "language", "")
-        log.info(f"VoiceSpeedManager: Current synth language: {current_lang}")
         
         # Find profile matching current language
-        # We try exact match, then fuzzy match (e.g. "en-US" matches "en")
-        matched_profile = None
+        # Strategy: Exact Match -> Bidirectional Fuzzy Match
         
         # Exact match
         matched_profile = next((p for p in profiles if p["language"].lower() == current_lang.lower()), None)
         
         # Fuzzy match (if no exact match)
         if not matched_profile:
-             log.debug(f"VoiceSpeedManager: No exact match for {current_lang}. Trying fuzzy match...")
              # 1. Current starts with Profile (e.g. synth "en_US" matches profile "en")
              matched_profile = next((p for p in profiles if current_lang.lower().startswith(p["language"].lower())), None)
              
@@ -96,52 +84,53 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                  matched_profile = next((p for p in profiles if p["language"].lower().startswith(current_lang.lower())), None)
 
         if matched_profile:
-            log.info(f"VoiceSpeedManager: Matched profile: {matched_profile}. Applying rate: {matched_profile['rate']}")
             self._set_rate(matched_profile["rate"])
-        else:
-            log.info(f"VoiceSpeedManager: No matching profile found for language {current_lang} in {profiles}")
 
     def _set_language(self, lang_code):
+        """
+        Robustly attempts to set the synthesizer language.
+        1. Direct assignment (synth.language = code)
+        2. availableLanguages search (fuzzy match)
+        3. Voice switching (iterating availableVoices)
+        """
         synth = synthDriverHandler.getSynth()
         current_lang = getattr(synth, "language", None)
         
-        # Avoid redundant switching if we are already confident
+        # Avoid redundant switching
         if current_lang == lang_code:
             return
 
         target_norm = lang_code.lower().replace("-", "_")
 
-        # 1. Try direct assignment (some synths support this)
+        # Method 1: Direct assignment
         try:
             synth.language = lang_code
-            log.info(f"VoiceSpeedManager: Switched language to {lang_code} via property")
             return
-        except Exception as e:
-            log.debug(f"VoiceSpeedManager: Direct assignment of language '{lang_code}' failed: {e}")
+        except Exception:
+            pass
 
-        # 2. Fallback: Search in availableLanguages
+        # Method 2: Search in availableLanguages
         try:
             available = getattr(synth, "availableLanguages", [])
             for lang in available:
                 l_str = str(lang)
                 l_norm = l_str.lower().replace("-", "_")
                 
-                # Check: Available starts with Target (e.g. "en_US" matches "en")
-                # OR Target starts with Available (e.g. "en" matches "en_US" - reverse fuzzy)
-                if l_norm == target_norm or l_norm.startswith(target_norm + "_") or target_norm.startswith(l_norm + "_"):
+                # Bidirectional fuzzy match
+                if (l_norm == target_norm or 
+                    l_norm.startswith(target_norm + "_") or 
+                    target_norm.startswith(l_norm + "_")):
                     synth.language = lang
-                    log.info(f"VoiceSpeedManager: Switched language to {lang} (matched from {lang_code})")
                     return
-        except Exception as e:
-            log.debug(f"VoiceSpeedManager: availableLanguages search failed: {e}")
+        except Exception:
+            pass
 
-        # 3. Fallback: Switch Voice
+        # Method 3: Switch Voice (Fallback for SAPI5/OneCore)
         try:
-            log.debug(f"VoiceSpeedManager: Attempting voice switch for language {lang_code}...")
-            # Convert generator to list to iterate multiple times
+            # Convert generator to list safely
             available_voices = list(getattr(synth, "availableVoices", []))
             
-            # First pass: Check for language attribute (if voice is an object)
+            # Pass A: Check 'language' attribute of voice objects
             for voice in available_voices:
                 try:
                     v_lang = getattr(voice, "language", None)
@@ -153,32 +142,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                             
                             voice_id = getattr(voice, "id", voice)
                             synth.voice = voice_id
-                            log.info(f"VoiceSpeedManager: Switched voice to {getattr(voice, 'name', 'Unknown')} for language {lang_code}")
                             return
                 except Exception:
                     continue
             
-            # Second pass: Check ID or Name string for language code
+            # Pass B: Check ID or Name string for language code
             for voice in available_voices:
                 try:
-                    # Handle both objects with .id/.name and simple string IDs
                     v_id = getattr(voice, "id", str(voice))
                     v_name = getattr(voice, "name", str(voice))
                     
                     v_id_norm = str(v_id).lower().replace("-", "_")
                     v_name_norm = str(v_name).lower().replace("-", "_")
                     
-                    # Check if target code (e.g. "en_us") is in ID or Name
                     if target_norm in v_id_norm or target_norm in v_name_norm:
                          synth.voice = v_id
-                         log.info(f"VoiceSpeedManager: Switched voice to {v_name} (ID/Name match) for language {lang_code}")
                          return
                 except Exception:
                     continue
-            
-            # Safe logging of available voices
-            voice_names = [getattr(v, 'name', str(v)) for v in available_voices]
-            log.warning(f"VoiceSpeedManager: Could not find a voice or language match for {lang_code}. Available voices: {voice_names}")
+
+            log.warning(f"VoiceSpeedManager: Could not find a voice or language match for {lang_code}")
 
         except Exception as e:
             log.error(f"VoiceSpeedManager: Failed to switch voice/language to {lang_code}: {repr(e)}")
@@ -187,8 +170,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         synth = synthDriverHandler.getSynth()
         try:
             current_rate = getattr(synth, "rate", None)
+            # Only set if significantly different to avoid jitter/spam
             if current_rate is not None and abs(current_rate - rate) > 0:
                 synth.rate = rate
-                log.info(f"VoiceSpeedManager: Adjusted rate to {rate}")
         except Exception as e:
             log.error(f"VoiceSpeedManager: Failed to set rate {rate}: {e}")

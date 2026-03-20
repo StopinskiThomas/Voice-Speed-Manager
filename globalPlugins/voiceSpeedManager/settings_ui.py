@@ -3,7 +3,6 @@ import os
 from gui.settingsDialogs import SettingsPanel
 from logHandler import log
 from .config import conf
-
 import synthDriverHandler
 
 class VoiceSpeedSettingsPanel(SettingsPanel):
@@ -71,7 +70,7 @@ class VoiceSpeedSettingsPanel(SettingsPanel):
 
         except Exception as e:
             log.error(f"VoiceSpeedManager: Error in makeSettings: {e}", exc_info=True)
-            settingsSizer.Add(wx.StaticText(self, label=f"Error: {e}"), 0, wx.ALL, 10)
+            settingsSizer.Add(wx.StaticText(self, label=f"Error loading settings: {e}"), 0, wx.ALL, 10)
 
     def populateAppList(self):
         self.appList.DeleteAllItems()
@@ -171,9 +170,7 @@ class ProfileDialog(wx.Dialog):
         try:
             synth = synthDriverHandler.getSynth()
             self.languages = getattr(synth, "availableLanguages", [])
-            # If availableLanguages is a list of objects, we might need to handle it. 
-            # Usually it's a list of strings (codes).
-            # Some synths like OneCore return objects, need to check string representation.
+            # Some synths like OneCore return objects, check string representation
             self.lang_choices = [str(l) for l in self.languages]
             self.lang_choices.sort()
         except Exception:

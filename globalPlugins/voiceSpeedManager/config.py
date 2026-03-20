@@ -5,7 +5,6 @@ from logHandler import log
 
 CONFIG_FILENAME = "voiceSpeedManager.json"
 
-# New Default Config Structure
 DEFAULT_CONFIG = {
     "apps": {}
 }
@@ -21,14 +20,12 @@ class ConfigManager:
             if os.path.exists(self.config_path):
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
-                    # Simple validation/migration: if old format, reset or migrate?
-                    # Old format had "profiles" (dict) and "rates" (dict).
-                    # New format has "apps" (dict).
+                    
+                    # Validate config structure
                     if "apps" in loaded:
                         self.data = loaded
                     else:
-                        log.warning("VoiceSpeedManager: Old config format detected. Resetting to new structure.")
-                        # Ideally we would migrate, but for this restructure we start fresh to ensure consistency.
+                        log.warning("VoiceSpeedManager: Incompatible config format detected. Resetting to default.")
                         self.data = DEFAULT_CONFIG.copy()
             else:
                 self.save()
