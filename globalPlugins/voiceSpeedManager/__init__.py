@@ -42,29 +42,40 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             if not app_config:
                  app_config = conf.get_app_details(app_name + ".exe")
             
+            # Get object language
+            obj_language = getattr(obj, "language", None)
+
             if app_config:
-                self._handle_app_focus(app_config)
+                self._handle_app_focus(app_config, obj_language)
 
         except Exception as e:
             log.error(f"VoiceSpeedManager: Error in event_gainFocus: {e}", exc_info=True)
         
         nextHandler()
 
-    def _handle_app_focus(self, app_config):
+    def _handle_app_focus(self, app_config, obj_language=None):
         """
         Applies the language and rate settings based on the application's profile.
+        Prioritizes the object's language if available.
         """
         profiles = app_config.get("profiles", [])
         if not profiles:
             return
 
-        # 1. Handle Auto-Switching
-        # Find the first profile with auto_switch enabled
-        auto_profile = next((p for p in profiles if p.get("auto_switch")), None)
-        if auto_profile:
-            self._set_language(auto_profile["language"])
+        target_lang = obj_language
 
-        # 2. Handle Rate Adjustment
+        # 1. Determine Target Language
+        # If no object language, fallback to auto-switch profile
+        if not target_lang:
+            auto_profile = next((p for p in profiles if p.get("auto_switch")), None)
+            if auto_profile:
+                target_lang = auto_profile["language"]
+
+        # 2. Apply Language
+        if target_lang:
+            self._set_language(target_lang)
+
+        # 3. Handle Rate Adjustment
         synth = synthDriverHandler.getSynth()
         current_lang = getattr(synth, "language", "")
         
